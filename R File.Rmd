@@ -1,0 +1,644 @@
+---
+title: "Noy & Zhang (2023): EDA/Preprocessing"
+author: "Omar Alminawi 554334"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+
+# Import Libraries
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(koRpus)
+library(quanteda.textstats)
+library(pheatmap)
+library(summarytools)
+library(xtable)
+library(scales)
+library(stargazer)
+library(hunspell)
+```
+
+# Import Data
+```{r}
+setwd("C:/Users/omara/OneDrive/Desktop/Erasmus University Rotterdam/MScBA Business Analytics Management/BMMTIBAM - Thesis & Internship/Data")
+fullsurvey <- read.csv("fullsurvey.csv")
+grades <- read.csv("grades.csv")
+text <- read.csv("fullsurvey_fulltext.csv")
+```
+# Data Selection
+
+For the purpose of this analysis, I am going to be using only a part of the dataset that is given by Noy and Zhang, simply because many of the given variables are not relevant for this paper, or in general.
+
+```{r}
+data <- fullsurvey[, c("responseid","comprehension1", "comprehension2", "empstat", "tenure", "usage", 
+                       "skillranking_1", "skillranking_2", "skillranking_3", 
+                       "task_a_timespent_pagesubmit", "task_b_timespent_pagesubmit", 
+                       "task_realism", "task_experience", 
+                       "usedgpt", "usefulness", "usedgpt_first", "chatgpt_often")]
+
+data <- merge(data, text[, c("responseid", "task_a", "task_b")], by = "responseid", all.x = TRUE)
+
+```
+
+```{r}
+# Adjusting task_a and task_b to correctly show NA
+
+for (i in 1:nrow(data)) {
+  if (str_trim(data$task_a[i]) == "") {
+    data$task_a[i] <- NA
+  }
+  
+  if (str_trim(data$task_b[i]) == "") {
+    data$task_b[i] <- NA
+  }
+}
+
+
+```
+
+Creating a table for variable descriptions
+
+```{r}
+str(data)
+```
+
+```{r}
+datadescription <- data.frame(
+  Variable = c("responseid", "comprehension1", "comprehension2", "empstat", "tenure", "usage", 
+               "skillranking_1", "skillranking_2", "skillranking_3", 
+               "task_a_timespent_pagesubmit", "task_b_timespent_pagesubmit", 
+               "task_realism", "task_experience", 
+               "usedgpt", "usefulness", "usedgpt_first", "chatgpt_often", "task_a", "task_b"),
+  Description = c("Unique identifier for each response", "Comprehension Test Question 1", "Comprehension Test Question 2", "Employment Status (1=Fulltime, 2=Parttime, 3=Unemployed/Searching For Work, 4=Not Searching For Work)", "Years of Tenure in Occupation", "Usage of Different Software Applications (1=Google Drive,2=Tableau, 3=ChatGpt, 4=Overleaf, 5=Jasper, 6=Grammarly)", 
+                  "Ranking Communication Skills", "Ranking Creativity Skills", "Ranking Skills of Coming Up with Good Solutions", 
+                  "Time Spent on Task A", "Time Spent on Task B", 
+                  "Asks Participant About Realism of the Task (1=Very Unrealistic,2=Unrealistic,3=Neutral,4=Realistic,5=Very Realistic)", "Asks Participant About Their Experience In Doing Similar Tasks (1=0 times, 2=1-3, 3=4-10,4=>10)", 
+                  "Asks Participant Post-Treatment Task If They Used ChatGPT 3.5 (1=Yes, 2=No, 4=Don't Know What ChatGPT Is", "How useful was ChatGPT on the task? (1=Not At All Useful, 2=Slightly Useful, 3=Moderately Useful, 4=Very Useful, 5=Extremely Useful)", "Did You Use ChatGPT In the First Task? (1=Yes, 2=No)", "How often would you use ChatGPT in your job, if you hadaccess to it? (1=Every Day, 2=A Couple of Times a Week, 3= A Couple of Times a Month, 4=Never)", "Text of Task A", "Text of Task B"),
+  Type = c("Character", "Categorical", "Categorical", "Categorical", "Numerical", "Categorical", 
+           "Categorical", "Categorical", "Categorical", 
+           "Numerical", "Numerical", 
+           "Categorical", "Categorical", 
+           "Categorical", "Categorical", "Binary", "Categorical", "Character", "Character")
+)
+
+xtable(datadescription)
+```
+
+
+# Data Cleanliness
+
+```{r}
+missing <- dfSummary(data)
+missing <- missing[, c(2,7,8)]
+missing <- as.data.frame(missing)
+xtable(missing)
+```
+
+# Data Cleaning
+
+## Column Selection and Alteration
+
+I will be removing any responses that lack the availability of text, since that is mainly what I am looking for. 
+
+```{r}
+data <- data[!(data$task_a == "" & data$task_b == ""), ]
+
+```
+
+Next, for the variable "usedpgt", I will make any responses that are number 4 into number 2, since they both mean that the participant did not use ChatGPT. Further, I am making No as 0 and Yes as 1.
+
+```{r}
+data <- data %>% 
+  mutate(usedgpt = ifelse(usedgpt == 4, 2, usedgpt))
+
+data <- data %>% 
+  mutate(usedgpt = ifelse(usedgpt == 2, 0, usedgpt))
+```
+
+I am also going to relevel 'task_experience' where No is 0 and 1 is Yes.
+
+```{r}
+data <- data %>% 
+  mutate(task_experience = ifelse(task_experience == 2, 0, task_experience))
+```
+
+The usage column is not really relevant for us besides ChatGPT, therefore, I am going to create a new column to replace it, which only checks if the participant has used ChatGPT in the past or not.
+
+```{r}
+data$usagetemp <- ifelse(grepl("3", data$usage), 1, 0)
+data$usage <- NULL
+colnames(data)[colnames(data) == "usagetemp"] <- "usage"
+```
+
+## Data Type Correction
+
+Lets also take a look at data types and fix what is necessary.
+
+```{r}
+str(data)
+```
+
+Seems that there are a lot of variables with incorrect data types, so let's try and fix that. 
+
+```{r}
+columns_to_convert <- c("empstat", "skillranking_1", "skillranking_2", 
+                        "skillranking_3", "usedgpt", "usefulness", 
+                        "usedgpt_first", "chatgpt_often", "task_realism", 
+                        "usage", "task_experience")
+
+
+data[columns_to_convert] <- lapply(data[columns_to_convert], as.factor)
+```
+
+```{r}
+str(data)
+```
+
+## Removal of Duplicates, NAs, and Outliers
+
+### Removal of Duplicates
+
+We will remove any duplicates from the dataset. 
+
+```{r}
+data <- data[!duplicated(data), ]
+```
+
+We see that all rows are unique, however, are all rows just for the column text_a or text_b unique? Since if there are duplicates, those would be generally useless.
+
+```{r}
+remove_duplicates_except_empty <- function(data, column) {
+  data_no_duplicates <- data[!(duplicated(data[[column]]) & data[[column]] != ""), ]
+  return(data_no_duplicates)
+}
+data <- remove_duplicates_except_empty(data, "task_a")
+```
+
+We see that except those which have empty strings, there is no duplication across the column. Let's check for task_b.
+
+```{r}
+data <- remove_duplicates_except_empty(data, "task_b")
+```
+
+We observe the same here.
+
+### Removal of NaNs and NAs
+
+It is important to keep in mind that, although the dataset does have some NAs, they do not have to be actually missing, the participant may have just not answered the question. We will represent those in a different way then. We will represent them through adding the number "999", which is quite far from any realistic answer and thereby accurately represents this. 
+
+```{r}
+data[columns_to_convert] <- apply(data[columns_to_convert], 2, function(x) {
+  x[is.na(x)] <- 999
+  x[x == ""] <- 999
+  return(x)
+})
+```
+
+```{r}
+colSums(is.na(data))
+```
+
+The times unfortunately have some data missing. For now, I will keep it this way, although it will affect the calculations made in the long-run, there is still a significant portion of the data that has the time.
+
+### Removal of Outliers
+
+Let's inspect outliers within the dataset, specifically, I'll be looking at the timespent on the tasks. Also highlighting the outliers in the boxplot.
+
+```{r}
+# Function to detect outliers using IQR method
+find_outliers <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower_bound <- q1 - 1.5 * iqr
+  upper_bound <- q3 + 1.5 * iqr
+  outliers <- x[x < lower_bound | x > upper_bound]
+  return(outliers)
+}
+
+# Find outliers in task_a_timespent_pagesubmit
+outliers <- find_outliers(data$task_a_timespent_pagesubmit)
+
+# Create a ggplot with boxplot and overlay outliers
+ggplot(data, aes(x = "", y = task_a_timespent_pagesubmit)) +
+  geom_boxplot() +
+  geom_point(data = data[data$task_a_timespent_pagesubmit %in% outliers, ],
+             aes(x = "", y = task_a_timespent_pagesubmit),
+             color = "red", size = 3) +
+  labs(title = "Boxplot of Task A Time Spent with Outliers Highlighted",
+       x = "", y = "Time Spent on Task A (Minutes)",
+       color = "Outliers") +
+  theme_solarized()
+
+dev.copy(png, "taskaoutliers.png")
+dev.off()
+
+```
+Doing the same for task b.
+
+```{r}
+# Find outliers in task_a_timespent_pagesubmit
+outliers <- find_outliers(data$task_b_timespent_pagesubmit)
+
+# Create a ggplot with boxplot and overlay outliers
+ggplot(data, aes(x = "", y = task_b_timespent_pagesubmit)) +
+  geom_boxplot() +
+  geom_point(data = data[data$task_b_timespent_pagesubmit %in% outliers, ],
+             aes(x = "", y = task_b_timespent_pagesubmit),
+             color = "red", size = 3) +
+  labs(title = "Boxplot of Task B Time Spent with Outliers Highlighted",
+       x = "", y = "Time Spent on Task B (Minutes)",
+       color = "Outliers") +
+  theme_solarized()
+
+dev.copy(png, "taskboutliers.png")
+dev.off()
+
+```
+
+Based on the boxplots, it seems that indeed both have some outliers, let's utilize the interquartile range. 
+
+```{r}
+# Calculate quantiles and IQR
+qnt_a <- quantile(data$task_a_timespent_pagesubmit, probs = c(.25, .75), na.rm = TRUE)
+H_a <- 1.5 * IQR(data$task_a_timespent_pagesubmit, na.rm = TRUE)
+
+qnt_b <- quantile(data$task_b_timespent_pagesubmit, probs = c(.25, .75), na.rm = TRUE)
+H_b <- 1.5 * IQR(data$task_b_timespent_pagesubmit, na.rm = TRUE)
+
+data <- data[!(data$task_a_timespent_pagesubmit < (qnt_a[1] - H_a) | data$task_a_timespent_pagesubmit > (qnt_a[2] + H_a)), ]
+
+data <- data[complete.cases(data), ]
+```
+
+The idea here is to remove the rows that have too much time as the output of the text is unlikely to be similar to other submissions, in that it is either too short/unrealistic, or too long and therefore, probably, much better formulated.
+
+Other variables cannot really have outlier analysis done to them, so we stop here.
+
+After we filled any possible missing entries which are logical to be missing with "999", we took away any that are not missing, and in addition to the outliers, we went from 565 to 393 observations, which is quite a jump but still enough for comparison.  
+
+```{r}
+str(data)
+```
+The tenure variable has a lot of decimals and such, I will be rounding them up for now. 
+
+```{r}
+data$tenure <- round(data$tenure)
+unique(data$tenure)
+data$tenure <- as.factor(data$tenure)
+```
+
+## Data Engineering
+
+```{r}
+data$task_a_timespent_pagesubmit <- data$task_a_timespent_pagesubmit / 60
+data$task_b_timespent_pagesubmit <- data$task_b_timespent_pagesubmit / 60
+```
+
+
+# Data Exploration
+
+## Initial Visualization of Data
+
+Let's take a look at the data to see if there are any patterns that we can observe.
+
+```{r}
+ggplot(data, aes(x = task_a_timespent_pagesubmit, y = task_b_timespent_pagesubmit)) +
+  geom_point() +
+  labs(title = "Time Spent on Task A vs Time Spent on Task B (Minutes)",
+       x = "Time Spent on Task A (Minutes)",
+       y = "Time Spent on Task B (Minutes)" ) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_x_continuous(breaks = seq(0, 120, 10)) +
+  scale_y_continuous(breaks = seq(0, 120, 10)) +
+  theme_solarized()
+
+dev.copy(png, "timetasks.png")
+dev.off()
+```
+Right off the bat this seems to be somewhat of a strange, but perhaps expected result. We see almost no correlation between the time spent on the two tasks. This could be due to the usage of GenAI in one or more of the tasks. In my current experiment, I am already seeing that people take a lot less time when using GenAI.
+
+To understand this a little bit further, I want to take a look at the average time in comaprison to usage and non-usage of GPT3 for each task. 
+
+```{r}
+p <- ggplot(data, aes(x = usedgpt, y = task_a_timespent_pagesubmit)) +
+  geom_boxplot() +
+  labs(title = "Time Spent on Task A vs Usage of GPT3",
+       x = "Usage of GPT3",
+       y = "Time Spent on Task A (Minutes)") +
+  theme_solarized()
+
+# Calculate quartiles
+quartiles <- data %>%
+  group_by(usedgpt) %>%
+  summarise(q1 = quantile(task_a_timespent_pagesubmit, 0.25, na.rm = TRUE),
+            median = quantile(task_a_timespent_pagesubmit, 0.5, na.rm = TRUE),
+            q3 = quantile(task_a_timespent_pagesubmit, 0.75, na.rm = TRUE))
+
+# Add quartile labels
+p + geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = q1, label = round(q1,2)),
+               vjust = -0.5, size = 3) +
+    geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = median, label = round(median,2)),
+               vjust = -1.5, size = 3) +
+    geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = q3, label = round(q3,2)),
+               vjust = -0.5, size = 3)
+
+
+
+dev.copy(png, "gptusageA.png")
+dev.off()
+```
+
+```{r}
+p <- ggplot(data, aes(x = usedgpt, y = task_b_timespent_pagesubmit)) +
+  geom_boxplot() +
+  labs(title = "Time Spent on Task B vs Usage of GPT3",
+       x = "Usage of GPT3",
+       y = "Time Spent on Task B (Minutes)") +
+  theme_solarized()
+
+# Calculate quartiles
+quartiles <- data %>%
+  group_by(usedgpt) %>%
+  summarise(q1 = quantile(task_b_timespent_pagesubmit, 0.25, na.rm = TRUE),
+            median = quantile(task_b_timespent_pagesubmit, 0.5, na.rm = TRUE),
+            q3 = quantile(task_b_timespent_pagesubmit, 0.75, na.rm = TRUE))
+
+# Add quartile labels
+p + geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = q1, label = round(q1,2)),
+               vjust = -0.5, size = 3) +
+    geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = median, label = round(median,2)),
+               vjust = -1.5, size = 3) +
+    geom_text(data = quartiles, aes(x = as.factor(usedgpt), y = q3, label = round(q3,2)),
+               vjust = -0.5, size = 3)
+
+dev.copy(png, "gptusageB.png")
+dev.off()
+```
+
+Here, we see that the time required to complete either task decreases with the usage of ChatGPT.
+
+```{r}
+ggplot(data, aes(x = tenure, y = mean(task_a_timespent_pagesubmit, na.rm = T))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Tenure vs Time Spent on Task A",
+       x = "Tenure",
+       y = "Mean Time Spent on Task A") +
+  theme_solarized()
+  
+```
+```{r}
+ggplot(data, aes(x = tenure, y = mean(task_b_timespent_pagesubmit, na.rm = T))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Tenure vs Time Spent on Task B",
+       x = "Tenure",
+       y = "Mean Time Spent on Task B") +
+  theme_solarized()
+  
+```
+
+Let's see how many people do use ChatGPT in comparison to those who do not, and show this in a bar chart.
+
+```{r}
+p = ggplot(data, aes(x = usedgpt)) +
+  geom_bar(stat = "count") +
+  labs(title = "Usage of ChatGPT",
+       x = "Usage of ChatGPT",
+       y = "Count") +
+  theme_solarized()
+
+props = data %>% 
+  group_by(usedgpt) %>% 
+  summarize(n = n()/nrow(data))
+
+p + geom_text(data = props, aes(x = as.factor(usedgpt), y = n, label = scales::percent(n)),
+              color = 'white', vjust = -5, size = 4)
+
+dev.copy(png, "gptprop.png")
+dev.off()
+
+```
+
+
+Generally speaking it seems that the data is somewhat normally distributed here. I assume that this is the case because there are just a lot more people in the middle, let's check this. 
+
+```{r}
+ggplot(data, aes(x=tenure)) +
+  geom_bar(stat = "count") +
+  labs(title = "Tenure Distribution",
+       x = "Tenure",
+       y = "Count") +
+  theme_solarized()
+```
+
+As is indeed expected, most people seem to be between 0-10 years of experience, mainly at 5 and 10 years of experience, which are the peaks that we see in our graph.
+
+It is also nice to know how tenure and the different skill rankings correlate, so.
+
+```{r}
+ggplot(data, aes(x = tenure, y = skillranking_1)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Tenure vs Skill Ranking 1",
+       x = "Tenure",
+       y = "Skill Ranking 1") +
+  theme_solarized()
+```
+
+
+```{r}
+ggplot(data, aes(x = tenure, y = skillranking_2)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Tenure vs Skill Ranking 2",
+       x = "Tenure",
+       y = "Skill Ranking 1") +
+  theme_solarized()
+```
+```{r}
+data_calc <- data[!data$skillranking_1 == 999, ]
+
+data_calc %>% 
+  group_by(tenure) %>% 
+  summarize(rank = mean(as.numeric(skillranking_1), na.rm = T)) %>% 
+  arrange(desc(rank))
+```
+
+## Table of Skill Rankings
+
+```{r}
+data_calc <- data[!data$skillranking_2 == 999, ]
+
+data_calc %>% 
+  group_by(tenure) %>% 
+  summarize(rank = mean(as.numeric(skillranking_2), na.rm = T)) %>% 
+  arrange(desc(rank))
+```
+
+
+```{r}
+data_calc <- data[!data$skillranking_3 == 999, ]
+
+data_calc %>% 
+  group_by(tenure) %>% 
+  summarize(rank = mean(as.numeric(skillranking_3), na.rm = T)) %>% 
+  arrange(desc(rank))
+```
+
+It seems that generally speaking, those with more years of tenure rank themselves better on skill levels, though, this is subjective as it is self-ranked and might also have to do with confidence, generally speaking. 
+
+
+```{r}
+data_calc <- data[!data$usedgpt == 999, ]
+
+data_calc %>% 
+  group_by(tenure, usedgpt) %>% 
+  summarize(n = n())
+```
+
+It does not really seem to see that there is a trend between years of experience and the usage of GenAI, which is quite interesting. 
+
+# Regressions
+
+Running regressions to see the effect of GAI usage on time. 
+
+```{r}
+model_a <- lm(task_a_timespent_pagesubmit ~ usedgpt_first, data = data)
+summary(model_a)
+
+model_b <- lm(task_b_timespent_pagesubmit ~ usedgpt, data = data)
+summary(model_b)
+
+stargazer(model_a, model_b)
+```
+
+
+# Creation of New Textual Characteristic Variables
+
+##Spelling
+
+```{r}
+customwords <- c("WorkCo", "Foodservice", "SmartBike", "eco", "Preprocess", "amongst", "incentivized", "AEP", "pursestrings", 
+           "Mirandola",  "Inc's", "cowork", "McDonald's", "COVID", "CAGR", "Ele", 
+           "Fanting", "Waimaichaoren", "digitalization", "urbanites", "Tularosa", "Anytown", "Lites", "eFit", "VR", "athleisure", "Scond",  "pre", "Mordor", "HBR", "impactful", "SMARTBIKE", "eBike", "www", "ebike", 
+           "Pyrinnes", "ness", "InfoOURGYM", "gmail", "Hadley", "numpy", "np", "df", "csv", "seaborn", "sns", "matplotlib", 
+           "pyplot", "plt", "figsize", "annot", "sklearn", "LogisticRegression", "logreg", "pred", "coef", "DataFrame", "proba", 
+           "codebook", "histplot", "kde", "kdeplot", "et", "AccureCo", "summate", "hardwork", "succesful", "undoubtly", "paygrade", "recourses", "gamers", "datetime", "genociding", "intelligences", "unbraided", "thanatic", "tous", "les", "du", "monde", "foret", "de", "symboles", "accumbal", "uphurl", "façade", "Salvese", "quien", "pueda",  "properous", "lossing", "Inc's", "GameSet", "upc", "Nestlé", "chatbot", "XXXX", "Bartram", "Lites", "mythically", "pre", "ADHD", "trepidations", "COVID", "chatbots", "Brookings", "CAGR", "Steakholder", "Zacks", "https", "cdn", "SCR", "STKH", "nd", "Ph", "Ds", "reco", "instacart", "intraday", "youbas", "VAR's", "bioprinter", "zoonotic", "XGBoost", "GlassSet", "VR", "jumpstart", "scalable", "scalability", "procurements", "CC'ed","bussiness", "Tryon", "Anderton", "companywide", "EBITDA", "eyewear", "amongst", "EDA", "numpy", "seaborn", "matplotlib", "groupby", "MinMaxScaler", "LightGBM", "GridSearchCV", "RandomizedSearchCV", "monoculture", "flexitarians", "STATA", "Epidata", "townhall", "mind",  "hyperparameterization", "biparental", "superempathy", "contextualization", "empathically", "sudorific", "liberality", "belabour", "Autore", "jupyter","preprocessing","dataset","dataframe","USD","ROI","AVGINTERVAL","CUSTINTERVAL", "heatmap","scatterplots","Heatmap","Scatterplots","ROC","AUC","importances", "LeBron","Kershaw","TBD","Lihue","Calakmul","Basecamp","Molonglo","johnsmith","SmartBike's","SVM","Eu", "foodservice","Foodservice","SmartBite", "WorkCVo","Workco","WorkCo", "XXXXXXX", "AIC","Akaike's","XY","McDonald's","McDonalds","Joad","Pizaaz", "ANOVA","VR","vr", "workco","boxplots","Metaverse","Kurzweil", "ROIC","CVC","CCV","SHAP","Fortnite","Roblox","TikTok","Snowbrook","Laila","Buena","JakeJames","WFH", "Covid","ITECH","Leesburg","WorkCo's", "Smartbike","Dominos","Mahalanobis", "Kross","LLC","Janedoe","JBR", "vitro","HD","Accure","Atwater","XXXXXX","ChatGPT","AccureCo","AccureCo's","Accureco","accureco","AccureCO","EFG","OKR","json","dataSource","Pokémon", "AITECH","RFE","XYZ","Northfield","ABD","Colvin","JHS","Eastwest","JohnJake","PCA","Keareny","McKinsey","pseudocode","Zachs","Schroedinger","Chapahtoowie","Appleblossom","Aleph", "Avant", "Bluenalu", "Biofood", "overfitting", "subsample", "RJ","overfit", "hyperparameter","scatterplot","Mosa","students'","Nations'","VisionPlus","eCommerce","Glassdoor's","Bott","Cashley","bluetooth","ZipCode","zipcode","GPT","CEOs","edu","Jergenson","jane","Stamos")
+
+data$spellinga <- hunspell(data$task_a, dict = "en_US", ignore = customwords)
+data$spellingb <- hunspell(data$task_b, dict = "en_US", ignore = customwords)
+
+count_words <- function(row) {
+  sum(lengths(strsplit(row, " ")))
+}
+
+data$spellinga <- sapply(data$spellinga, count_words)
+data$spellingb <- sapply(data$spellingb, count_words)
+
+```
+
+
+## Flesch-Kincaid Grade Level
+
+```{r}
+data$readabilityflescha <- textstat_readability(data$task_a, measure = "Flesch")
+data$readabilityfleschb <- textstat_readability(data$task_b, measure = "Flesch")
+
+data$readabilityfleschkincaida <- textstat_readability(data$task_a, measure = "Flesch.Kincaid")
+data$readabilityfleschkincaidb <- textstat_readability(data$task_b, measure = "Flesch.Kincaid")
+```
+
+I will be removing any entries that are above 100 or below 0 in Flesch and below 0 are above 18 for Flesch Kincaid
+
+
+```{r}
+copydata <- data
+
+copydata <- copydata[!(copydata$readabilityflescha$Flesch > 100),]
+copydata <- copydata[!(copydata$readabilityflescha$Flesch < 0),]
+copydata <- copydata[!(copydata$readabilityfleschkincaida$Flesch.Kincaid > 18),]
+copydata <- copydata[!(copydata$readabilityfleschkincaida$Flesch.Kincaid < 0),]
+
+copydata <- copydata[!(copydata$readabilityfleschb$Flesch > 100),]
+copydata <- copydata[!(copydata$readabilityfleschb$Flesch < 0),]
+copydata <- copydata[!(copydata$readabilityfleschkincaidb$Flesch.Kincaid > 18),]
+copydata <- copydata[!(copydata$readabilityfleschkincaidb$Flesch.Kincaid < 0),]
+
+data <- copydata
+```
+
+Now we have 369 observations left. 
+
+```{r}
+data$readabilityflescha <- data$readabilityflescha$Flesch
+data$readabilityfleschb <- data$readabilityfleschb$Flesch
+data$readabilityfleschkincaida <- data$readabilityfleschkincaida$Flesch.Kincaid
+data$readabilityfleschkincaidb <- data$readabilityfleschkincaidb$Flesch.Kincaid
+```
+
+Now, I will export the data to do the same thing that I did with the experiment.
+
+```{r}
+write.csv(data, "data_grammar.csv")
+```
+
+Let's now reimport the data.
+
+```{r}
+setwd("C:/Users/omara/OneDrive/Desktop/Erasmus University Rotterdam/MScBA Business Analytics Management/BMMTIBAM - Thesis & Internship/Data")
+data <- read.csv("data_grammar_sentiment.csv")
+```
+```{r}
+xtable(
+  data %>% 
+  group_by(usedgpt_first) %>% 
+  summarize(n = n())
+)
+```
+
+
+
+# Data Analysis
+
+## Adjustments
+
+```{r}
+columnstoconvert <- c("comprehension1", "comprehension2", "empstat", "skillranking_1", "skillranking_2", 
+                      "skillranking_3", "usedgpt", "usefulness", 
+                      "usedgpt_first", "chatgpt_often", "task_realism", 
+                      "usage", "task_experience", "usedgpt","usefulness","usedgpt_first","chatgpt_often")
+
+data <- data %>%
+  mutate_at(.vars = columnstoconvert, .funs = as.factor)
+```
+
+## Logging Variables
+
+We need to log the grammar and spelling variables.
+
+```{r}
+data$spellinga_log <- log(data$spellinga + 1)
+data$spellingb_log <- log(data$spellingb + 1)
+data$grammar_a_log <- log(data$grammar_a + 1)
+data$grammar_b_log <- log(data$grammar_b + 1)
+```
+
+```{r}
+colnames(data)[colnames(data) == "usedgpt_first"] <- "GAIUsage_a"
+colnames(data)[colnames(data) == "usedgpt"] <- "GAIUsage_b"
+```
+
+# Exporting Data
+
+Exporting data beyond this point. 
+
+```{r}
+write.csv(data, "noy_zhang.csv")
+```
+

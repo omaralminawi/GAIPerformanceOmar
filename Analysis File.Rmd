@@ -1,0 +1,609 @@
+---
+title: "Regression Analysis"
+author: "Omar Alminawi 554334"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+The purpose of this document is to create the regression analysis for the different data.
+
+# Import Libraries
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(koRpus)
+library(quanteda.textstats)
+library(pheatmap)
+library(summarytools)
+library(xtable)
+library(scales)
+library(stargazer)
+library(hunspell)
+library(koRpus)
+library(LanguageToolR)
+library(MASS)
+library(gridExtra)
+library(lindia)
+library(car)
+library(lmtest)
+library(MASS)
+library(sandwich)
+```
+
+# Loading Data
+
+```{r}
+setwd("C:/Users/omara/OneDrive/Desktop/Erasmus University Rotterdam/MScBA Business Analytics Management/BMMTIBAM - Thesis & Internship/Data")
+data1 <- read.csv("experiment_analysis.csv")
+data2 <- read.csv("noy_zhang.csv")
+
+```
+
+## Adjustments
+
+
+```{r}
+cols_to_convert <- c("GAI_Experience", "Tech_Skills", 
+                     "Business_Task_Experience", "Descriptive_Task_Experience", 
+                     "Task1_Doable", "Task1_Similar", "Task1_Confidence", 
+                     "Task1_Easy", "Task2_Doable", "Task2_Similar", 
+                     "Task2_Confidence", "Task2_Easy", "Task2_GAI_Help")
+
+data1 <- data1 %>%
+  mutate_at(.vars = cols_to_convert, .funs = as.factor)
+```
+
+
+```{r}
+columnstoconvert <- c("comprehension1", "comprehension2", "empstat", "skillranking_1", "skillranking_2", 
+                      "skillranking_3", "GAIUsage_a", "usefulness", 
+                      "GAIUsage_b", "chatgpt_often", "task_realism", 
+                      "usage", "task_experience","usefulness","chatgpt_often")
+
+data2 <- data2 %>%
+  mutate_at(.vars = columnstoconvert, .funs = as.factor)
+```
+
+
+
+Removing response_ID "R_1f7ykJ4BEIF9YWR" from data2 as it is an outlier in terms of spelling. 
+
+```{r}
+data2 <- data2[data2$responseid != "R_1f7ykJ4BEIF9YWR", ]
+```
+
+Quickly relevling occupation variable.
+```{r}
+data1$Occupation <- ifelse(data1$Occupation == 1, 1, 0)
+```
+
+
+```{r}
+data1$Unnamed..0 <- NULL
+data1$X <- NULL
+```
+
+
+
+# Experimental Data
+
+## Regression Analysis
+
+###Logarithmic Variables
+
+I want to make new columns which take the logs of each variable for the experiment's Grammar and Spelling variables, so that we can comfortably do OLS. 
+
+```{r}
+data1$SpellingLog <- log(data1$Spelling + 1)
+data1$GrammarLog <- log(data1$Grammar + 1)
+```
+
+###Regressions With no Moderation
+
+```{r}
+RegSpelling_E <- lm(SpellingLog ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegSpelling_E )
+```
+
+```{r}
+RegReadability_E <- lm(ReadabilityFlesch ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegReadability_E)
+```
+
+
+```{r}
+RegReadability2_E <- lm(ReadabilityFleschKincaid ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegReadability2_E)
+```
+
+```{r}
+RegSentiment_E <- lm(Sentiment ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegSentiment_E)
+```
+
+```{r}
+RegGrammar_E <- lm(GrammarLog ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegGrammar_E)
+```
+
+###Regressions With Moderation
+
+
+```{r}
+RegSpelling_EM <- lm(SpellingLog ~ GAIUsage + Occupation + GAIUsage*Occupation + Age + Ethnicity +  Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegSpelling_EM)
+```
+
+```{r}
+RegReadability_EM <- lm(ReadabilityFlesch ~ GAIUsage + Occupation + GAIUsage*Occupation + Age + Ethnicity +  Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegReadability_EM)
+```
+
+```{r}
+RegReadability2_EM <- lm(ReadabilityFleschKincaid ~ GAIUsage + Occupation + GAIUsage*Occupation + Age + Ethnicity +  Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegReadability2_EM)
+```
+
+```{r}
+RegSentiment_EM <- lm(Sentiment ~ GAIUsage + Occupation + GAIUsage*Occupation + Age + Ethnicity +  Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegSentiment_EM)
+```
+
+```{r}
+RegGrammar_EM <- lm(GrammarLog ~ GAIUsage + Occupation + GAIUsage*Occupation + Age + Ethnicity +  Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+summary(RegGrammar_EM)
+```
+
+# Noy & Zhang Data
+
+## Conducting Regressions
+
+### Task B
+
+
+```{r}
+RegSpelling_NB <- lm(spellingb_log ~ GAIUsage_b + empstat + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegSpelling_NB)
+
+```
+
+```{r}
+RegGrammar_NB <- lm(grammar_b_log ~ GAIUsage_b + empstat + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegGrammar_NB)
+```
+
+```{r}
+RegSentiment_NB <- lm(sentiment_b ~ GAIUsage_b + empstat + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegSentiment_NB)
+```
+
+```{r}
+RegFlesch_NB <- lm(readabilityfleschb ~ GAIUsage_b + empstat + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegFlesch_NB)
+```
+
+```{r}
+RegFleschKincaid_NB <- lm(readabilityfleschkincaida ~ GAIUsage_b + empstat + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + GAIUsage_a + usefulness, data = data2)
+
+summary(RegFleschKincaid_NB)
+```
+
+
+## Conducting Regressions With Moderation
+
+### Task B
+
+```{r}
+RegSpelling_NBM <- lm(spellinga_log ~ GAIUsage_b + empstat + empstat*GAIUsage_b + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegSpelling_NBM)
+
+```
+
+```{r}
+RegGrammar_NBM <- lm(grammar_a_log ~ GAIUsage_b + empstat + empstat*GAIUsage_b + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegGrammar_NBM)
+```
+
+```{r}
+RegSentiment_NBM <- lm(sentiment_a ~ GAIUsage_b + empstat + empstat*GAIUsage_b + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegSentiment_NBM)
+```
+
+```{r}
+RegFlesch_NBM <- lm(readabilityflescha ~ GAIUsage_b + empstat + empstat*GAIUsage_b + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegFlesch_NBM)
+```
+
+```{r}
+RegFleschKincaid_NBM <- lm(readabilityfleschkincaida ~ GAIUsage_b + empstat + empstat*GAIUsage_b + tenure + skillranking_1 + skillranking_2 + skillranking_3 + task_a_timespent_pagesubmit + task_realism + task_experience + usefulness, data = data2)
+
+summary(RegFleschKincaid_NBM)
+```
+
+#Cross Model Comparison
+
+Here, we will subtract the effects of genAI usage of GPT3.5 from the effects of genAI usage of GPT4.0. 
+
+## Non-Moderated Models
+
+```{r}
+SpellingDiff_b <- summary(RegSpelling_E)$coefficients[2,1] - summary(RegSpelling_NB)$coefficients[2,1]
+
+GrammarDiff_b <- summary(RegGrammar_E)$coefficients[2,1] - summary(RegGrammar_NB)$coefficients[2,1]
+
+SentimentDiff_b <- summary(RegSentiment_E)$coefficients[2,1] - summary(RegSentiment_NB)$coefficients[2,1]
+
+FleschDiff_b <- summary(RegReadability_E)$coefficients[2,1] - summary(RegFlesch_NB)$coefficients[2,1]
+
+FleschKincaidDiff_b <- summary(RegReadability2_E)$coefficients[2,1] - summary(RegFleschKincaid_NB)$coefficients[2,1]
+```
+
+## Moderated Models
+
+```{r}
+SpellingDiff_bM <- summary(RegSpelling_EM)$coefficients[2,1] - summary(RegSpelling_NBM)$coefficients[2,1]
+
+GrammarDiff_bM <- summary(RegGrammar_EM)$coefficients[2,1] - summary(RegGrammar_NBM)$coefficients[2,1]
+
+SentimentDiff_bM <- summary(RegSentiment_EM)$coefficients[2,1] - summary(RegSentiment_NBM)$coefficients[2,1]
+
+FleschDiff_bM <- summary(RegReadability_EM)$coefficients[2,1] - summary(RegFlesch_NBM)$coefficients[2,1]
+
+FleschKincaidDiff_bM <- summary(RegReadability2_EM)$coefficients[2,1] - summary(RegFleschKincaid_NBM)$coefficients[2,1]
+```
+
+# Results 
+
+# Regression Experiment Non-Moderated
+
+```{r}
+stargazer(RegSpelling_E, RegReadability_E, RegReadability2_E, RegSentiment_E, RegGrammar_E, type = "text")
+```
+
+# Regression Experiment Moderated
+
+```{r}
+stargazer(RegSpelling_EM, RegReadability_EM, RegReadability2_EM, RegSentiment_EM, RegGrammar_EM, type = "text")
+```
+
+
+# Regression Noy & Zhang Non-Moderated
+
+## Task B
+
+```{r}
+stargazer(RegSpelling_NB, RegFlesch_NB, RegFleschKincaid_NB, RegSentiment_NB, RegGrammar_NB, type = "text")
+```
+
+
+# Regression Noy & Zhang Moderated
+
+## Task B
+
+```{r}
+stargazer(RegSpelling_NBM, RegFlesch_NBM, RegFleschKincaid_NBM, RegSentiment_NBM,  RegGrammar_NBM, type = "text")
+```
+
+
+# Difference of Effects Non-Moderated
+
+```{r}
+differences <- data.frame(SpellingDiff_b, FleschDiff_b, FleschKincaidDiff_b, SentimentDiff_b, GrammarDiff_b)
+
+differences.transposed <- t(differences)
+
+colnames(differences.transposed)[1] <- "Difference"
+rownames(differences.transposed) <- c("Spelling", "Flesch", "FleschKincaid", "Sentiment", "Grammar")
+differences.transposed <- as.data.frame(differences.transposed)
+
+differences.transposed$GPT3.5 <-  c(summary(RegSpelling_NB)$coefficients[2,1], summary(RegFlesch_NB)$coefficients[2,1], summary(RegFleschKincaid_NB)$coefficients[2,1], summary(RegSentiment_NB)$coefficients[2,1], summary(RegGrammar_NB)$coefficients[2,1])
+
+differences.transposed$GPT4 <- c(summary(RegSpelling_E)$coefficients[2,1], summary(RegReadability_E)$coefficients[2,1], summary(RegReadability2_E)$coefficients[2,1], summary(RegSentiment_E)$coefficients[2,1], summary(RegGrammar_E)$coefficients[2,1])
+
+differences.transposed$Difference <- NULL
+
+differences.transposed$Difference <- differences.transposed$GPT4 - differences.transposed$GPT3.5
+
+stargazer(differences.transposed, summary = F)
+```
+
+# Model Evaluation for Independent experiment 
+
+```{r}
+# Set up the plot layout for multiple plots
+par(mfrow=c(2,2))
+
+# Plot and save the "Spelling" plot
+plot(RegSpelling_E)
+dev.copy(png, "Spelling.png", width = 600, height = 400)
+dev.off()
+
+# Plot and save the "Readability" plot
+plot(RegReadability_E)
+dev.copy(png, "Flesch.png", width = 600, height = 400)
+dev.off()
+
+# Plot and save the "Readability2" plot
+plot(RegReadability2_E)
+dev.copy(png, "FleschKincaid.png", width = 600, height = 400)
+
+dev.off()
+
+# Plot and save the "Sentiment" plot
+plot(RegSentiment_E)
+dev.copy(png, "Sentiment.png", width = 600, height = 400)
+
+dev.off()
+
+# Plot and save the "Grammar" plot
+plot(RegGrammar_E)
+dev.copy(png, "Grammar.png", width = 600, height = 400)
+dev.off()
+
+```
+
+```{r}
+# Doing Linearity tests
+
+resettest(RegSpelling_E)
+resettest(RegReadability_E)
+resettest(RegReadability2_E)
+resettest(RegSentiment_E)
+resettest(RegGrammar_E)
+```
+
+Double checking via Shapiro Tests
+
+```{r}
+
+SpellingNormality <- shapiro.test(data1$SpellingLog)
+ReadabilityNormality <- shapiro.test(data1$ReadabilityFlesch)
+Readability2Normality <- shapiro.test(data1$ReadabilityFleschKincaid)
+SentimentNormality <- shapiro.test(data1$Sentiment)
+GrammarNormality <- shapiro.test(data1$GrammarLog)
+
+NormalityTable <- as.data.frame(cbind(SpellingNormality, ReadabilityNormality, Readability2Normality, SentimentNormality, GrammarNormality))
+
+NormalityTable <- as.data.frame(t(NormalityTable))
+
+NormalityTable$method <- NULL
+NormalityTable$data.name <- NULL
+
+NormalityTable$statistic <- gsub(".*=", "", NormalityTable$statistic)
+NormalityTable$statistic <- gsub("\\).*", "", NormalityTable$statistic)
+
+NormalityTable$p.value <- gsub(".*=", "", NormalityTable$p.value)
+
+stargazer(NormalityTable, summary = F)
+
+```
+
+Checking spread of sentiment.
+
+```{r}
+ggplot(data1, aes(x = Sentiment)) +
+  geom_histogram(binwidth = 0.01) +
+  scale_x_continuous(breaks = seq(-1, 1, by = 0.1)) +
+  theme_solarized() +
+  labs(title = "Sentiment Spread", x = "Sentiment", y = "Frequency")
+
+dev.copy(png, "SentimentSpread.png", width = 600, height = 400)
+dev.off()
+
+```
+
+
+Doing Breusch-Pagan Tests
+
+```{r}
+bptest(RegSpelling_E)
+bptest(RegReadability_E)
+bptest(RegReadability2_E)
+bptest(RegSentiment_E)
+bptest(RegGrammar_E)
+
+#Putting them in a table.
+
+bp_spelling <- bptest(RegSpelling_E)
+bp_readability <- bptest(RegReadability_E)
+bp_readability2 <- bptest(RegReadability2_E)
+bp_sentiment <- bptest(RegSentiment_E)
+bp_grammar <- bptest(RegGrammar_E)
+
+bp_table <- as.data.frame(cbind(bp_spelling, bp_readability, bp_readability2, bp_sentiment, bp_grammar))
+
+bp_table <- as.data.frame(t(bp_table))
+
+bp_table$method <- NULL
+bp_table$data.name <- NULL
+bp_table$parameter <- NULL
+
+#Getting only the value after the equal sign and before the ) 
+
+bp_table$statistic <- gsub(".*=", "", bp_table$statistic)
+bp_table$statistic <- gsub("\\).*", "", bp_table$statistic)
+
+bp_table$p.value <- gsub(".*=", "", bp_table$p.value)
+bp_table$p.value <- gsub("\\).*", "", bp_table$p.value)
+
+stargazer(bp_table, summary = F)
+```
+
+Creating White Standard Errors
+
+```{r}
+seWhiteSpelling <- sqrt(diag(vcovHC(RegSpelling_E, type = "HC0")))
+seWhiteReadability <- sqrt(diag(vcovHC(RegReadability_E, type = "HC0")))
+seWhiteReadability2 <- sqrt(diag(vcovHC(RegReadability2_E, type = "HC0")))
+seWhiteSentiment <- sqrt(diag(vcovHC(RegSentiment_E, type = "HC0")))
+seWhiteGrammar <- sqrt(diag(vcovHC(RegGrammar_E, type = "HC0")))
+
+stargazer(RegSpelling_E, RegReadability_E, RegReadability2_E, RegSentiment_E, RegGrammar_E, se = list(seWhiteSpelling, seWhiteReadability, seWhiteReadability2, seWhiteSentiment, seWhiteGrammar))
+```
+
+Doing the same for moderated regs.
+
+```{r}
+seWhiteSpellingM <- sqrt(diag(vcovHC(RegSpelling_EM, type = "HC0")))
+seWhiteReadabilityM <- sqrt(diag(vcovHC(RegReadability_EM, type = "HC0")))
+seWhiteReadability2M <- sqrt(diag(vcovHC(RegReadability2_EM, type = "HC0")))
+seWhiteSentimentM <- sqrt(diag(vcovHC(RegSentiment_EM, type = "HC0")))
+seWhiteGrammarM <- sqrt(diag(vcovHC(RegGrammar_EM, type = "HC0")))
+
+stargazer(RegSpelling_EM, RegReadability_EM, RegReadability2_EM, RegSentiment_EM, RegGrammar_EM, se = list(seWhiteSpellingM, seWhiteReadabilityM, seWhiteReadability2M, seWhiteSentimentM, seWhiteGrammarM))
+```
+
+
+## Multicollinearity
+
+
+```{r}
+vif(RegSpelling_E)
+stargazer(vif(RegSpelling_E), summary = F)
+```
+
+## Model Statistics
+
+```{r}
+#R-Squared
+r_spelling <- summary(RegSpelling_E)$r.squared
+r_readability <- summary(RegReadability_E)$r.squared
+r_readability2 <- summary(RegReadability2_E)$r.squared
+r_sentiment <- summary(RegSentiment_E)$r.squared
+r_grammar <- summary(RegGrammar_E)$r.squared
+
+rm_spelling <- summary(RegSpelling_EM)$r.squared
+rm_readability <- summary(RegReadability_EM)$r.squared
+rm_readability2 <- summary(RegReadability2_EM)$r.squared
+rm_sentiment <- summary(RegSentiment_EM)$r.squared
+rm_grammar <- summary(RegGrammar_EM)$r.squared
+
+#Adjusted R-Squared
+
+ar_spelling <- summary(RegSpelling_E)$adj.r.squared
+ar_readability <- summary(RegReadability_E)$adj.r.squared
+ar_readability2 <- summary(RegReadability2_E)$adj.r.squared
+ar_sentiment <- summary(RegSentiment_E)$adj.r.squared
+ar_grammar <- summary(RegGrammar_E)$adj.r.squared
+
+arm_spelling <- summary(RegSpelling_EM)$adj.r.squared
+arm_readability <- summary(RegReadability_EM)$adj.r.squared
+arm_readability2 <- summary(RegReadability2_EM)$adj.r.squared
+arm_sentiment <- summary(RegSentiment_EM)$adj.r.squared
+arm_grammar <- summary(RegGrammar_EM)$adj.r.squared
+
+#RMSE 
+
+rmse_spelling <- sqrt(mean((data1$SpellingLog - RegSpelling_E$fitted.values)^2))
+rmse_readability <- sqrt(mean((data1$ReadabilityFlesch - RegReadability_E$fitted.values)^2))
+rmse_readability2 <- sqrt(mean((data1$ReadabilityFleschKincaid - RegReadability2_E$fitted.values)^2))
+rmse_sentiment <- sqrt(mean((data1$Sentiment - RegSentiment_E$fitted.values)^2))
+rmse_grammar <- sqrt(mean((data1$GrammarLog - RegGrammar_E$fitted.values)^2))
+
+rmse_m_spelling <- sqrt(mean((data1$SpellingLog - RegSpelling_EM$fitted.values)^2))
+rmse_m_readability <- sqrt(mean((data1$ReadabilityFlesch - RegReadability_EM$fitted.values)^2))
+rmse_m_readability2 <- sqrt(mean((data1$ReadabilityFleschKincaid - RegReadability2_EM$fitted.values)^2))
+rmse_m_sentiment <- sqrt(mean((data1$Sentiment - RegSentiment_EM$fitted.values)^2))
+rmse_m_grammar <- sqrt(mean((data1$GrammarLog - RegGrammar_EM$fitted.values)^2))
+
+#MAE
+
+mae_spelling <- mean(abs(data1$SpellingLog - RegSpelling_E$fitted.values))
+mae_readability <- mean(abs(data1$ReadabilityFlesch - RegReadability_E$fitted.values))
+mae_readability2 <- mean(abs(data1$ReadabilityFleschKincaid - RegReadability2_E$fitted.values))
+mae_sentiment <- mean(abs(data1$Sentiment - RegSentiment_E$fitted.values))
+mae_grammar <- mean(abs(data1$GrammarLog - RegGrammar_E$fitted.values))
+
+mae_m_spelling <- mean(abs(data1$SpellingLog - RegSpelling_EM$fitted.values))
+mae_m_readability <- mean(abs(data1$ReadabilityFlesch - RegReadability_EM$fitted.values))
+mae_m_readability2 <- mean(abs(data1$ReadabilityFleschKincaid - RegReadability2_EM$fitted.values))
+mae_m_sentiment <- mean(abs(data1$Sentiment - RegSentiment_EM$fitted.values))
+mae_m_grammar <- mean(abs(data1$GrammarLog - RegGrammar_EM$fitted.values))
+
+# Making a data frame
+
+scores <- data.frame(R2 = c(r_spelling, r_readability, r_readability2, r_sentiment, r_grammar, rm_spelling, rm_readability, rm_readability2, rm_sentiment, rm_grammar), 
+                     AR2 = c(ar_spelling, ar_readability, ar_readability2, ar_sentiment, ar_grammar, arm_spelling, arm_readability, arm_readability2, arm_sentiment, arm_grammar),
+                     RMSE = c(rmse_spelling, rmse_readability, rmse_readability2, rmse_sentiment, rmse_grammar, rmse_m_spelling, rmse_m_readability, rmse_m_readability2, rmse_m_sentiment, rmse_m_grammar),
+                     MAE = c(mae_spelling, mae_readability, mae_readability2, mae_sentiment, mae_grammar, mae_m_spelling, mae_m_readability, mae_m_readability2, mae_m_sentiment, mae_m_grammar))
+
+rownames(scores) <- c("Spelling", "Flesch", "FleschKincaid", "Sentiment", "Grammar", "Spelling Moderated", "Flesch Moderated", "FleschKincaid Moderated", "Sentiment Moderated", "Grammar Moderated")
+
+stargazer(scores, summary = F)
+
+```
+# Doing Robustness Checks
+
+Conducting Poisson Regression Models for Robustness Checks
+
+## Spelling
+
+```{r}
+RegSpelling_Poisson <- glm(Spelling ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence, data = data1)
+
+temp <- data1
+
+temp$GAIUsage[temp$GAIUsage == 0] <- 1
+
+tempAPE.1 <- mean(exp(predict.glm(RegSpelling_Poisson, newdata = temp, type = "response")))
+
+temp$GAIUsage[temp$GAIUsage == 1] <- 0
+
+tempAPE.0 <- mean(exp(predict.glm(RegSpelling_Poisson, newdata = temp, type = "response")))
+
+APE.GAI <- tempAPE.1 - tempAPE.0
+
+round(cbind(tempAPE.1, tempAPE.0, APE.GAI), 3)
+```
+
+
+## Grammar
+
+```{r}
+RegGrammar_Poisson <- glm(Grammar ~ GAIUsage + Age + Ethnicity + Occupation + Years.of.Experience + Education + English_First_Language + GAI_Experience + Tech_Skills + Business_Task_Experience + Descriptive_Task_Experience + Task1_Doable + Task1_Similar + Task1_Confidence + Task1_Easy + Task2_Doable + Task2_Similar + Task2_Confidence + Task2_Easy + Task2_GAI_Help, data = data1)
+
+temp <- data1
+
+temp$GAIUsage[temp$GAIUsage == 0] <- 1
+
+tempAPE.1 <- mean(exp(predict.glm(RegGrammar_Poisson, newdata = temp, type = "response")))
+
+temp$GAIUsage[temp$GAIUsage == 1] <- 0
+
+tempAPE.0 <- mean(exp(predict.glm(RegGrammar_Poisson, newdata = temp, type = "response")))
+
+APE.GAI <- tempAPE.1 - tempAPE.0
+
+round(cbind(tempAPE.1, tempAPE.0, APE.GAI), 3)
+
+summary(RegGrammar_Poisson)
+```
+
+```{r}
+stargazer(RegSpelling_Poisson, RegGrammar_Poisson)
+```
+

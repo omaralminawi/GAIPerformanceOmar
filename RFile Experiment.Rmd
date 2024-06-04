@@ -1,0 +1,562 @@
+---
+title: "Experiment: EDA/Preprocessing"
+author: "Omar Alminawi 554334om"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+
+# Import Libraries
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(koRpus)
+library(quanteda.textstats)
+library(pheatmap)
+library(summarytools)
+library(xtable)
+library(scales)
+library(stargazer)
+library(hunspell)
+library(koRpus)
+library(LanguageToolR)
+```
+
+# Import Data
+```{r}
+setwd("C:/Users/omara/OneDrive/Desktop/Erasmus University Rotterdam/MScBA Business Analytics Management/BMMTIBAM - Thesis & Internship/Data/")
+data <- read.csv("experiment.csv")
+data <- data[data$Finished == 'TRUE', ]
+data <- data %>% 
+  select(-c(1:8,10:17, 35:36, 38, 40:41, 43, 52:57, 59, 61:66, 68, 78))
+```
+
+Creating a table of variables
+
+```{r}
+str(data)
+datadescription <- data.frame(
+  Variables = c("ResponseID", "Age","Gender","Ethnicity", "Occupation","Years.of.Experience","Education","English_First_Language", "GAI_Experience","Tech_Skills","Business_Task_Experience","Descriptive_Task_Experience", "Cloze_x_y", "Task1_Descriptive", "Task_1_Business", "Task1_x_Page_Submit",  "Taskx_Doable","Taskx_Similar","Taskx_Confidence","Taskx_Easy", "Task2_Descriptive","Task2_Business","Task2_x_Page_Submit", "Task2_GAI_Help"),
+  Description = c("Unique Response Identifier", "Age Group (1=12-27, 2=28-43, 3=44-59, 4=60-78, 5=79-95, 0=Prefer Not To Say)", "Gender (1=Male, 2=Female, 0=Prefer Not To Say)", "Ethnicity and Ethnicity_Other (Full List in Appendix)", "Current Occupation (Full List in Appendix)", "Years of Experience Since First Job", "Education (Full List in Appendix)", "'Is English Your First Language?' (0=No, 1=Yes)", "Rate Experience With GAI", "Rate Technical Skills","Rate Experience With Business Writing","Rate Experience With Descriptive Writing", "Cloze Test Question for Subsection y For Question x To Measure English Skills", "Text for Task 1 (Descriptive)", "Text for Task 1 (Business)","Time Needed to Finish Task 1","'I believe that the writing task was doable.'", "'I have done a similar writing task before.'", "'I felt that my quality of writing was high.'", "'I think that the writing task was well structured and easy to understand.'", "Text for Task 2 (Descriptive)", "Text for Task 2 (Business)","Time Needed to Finish Task 2", "'I believe that generative AI helped me perform better in the given task.'"),
+  Type = c("Character", "Categorical","Categorical","Categorical","Categorical","Numerical","Categorical","Binary","Numerical","Numerical","Numerical","Numerical","Categorical","Character","Character","Numerical","Numerical","Numerical","Numerical","Numerical","Character","Character","Numerical","Numerical")
+)
+xtable(datadescription)
+```
+
+# Data Exploration
+
+## Participant Data
+
+Let us first investigate the types of people that participated.
+
+```{r}
+xtable(data %>% 
+  group_by(Gender, Age) %>% 
+  summarise(count = n())) 
+```
+
+Also checking the educational levels.
+
+```{r}
+xtable(data %>% 
+  group_by(Education) %>% 
+  summarise(count = n()))
+```
+
+## Time-based Graphs
+
+Similar to the other dataset, we will investigate the effect of ChatGPT usage on time. 
+
+
+```{r}
+time_data <- data.frame(data$Task1_Business_Page_Submit, data$Task1_Descriptive_Page_Submit, data$Task2_Business_Page_Submit, data$Task2_Descriptive_Page_Submit)
+
+time_data <- time_data %>% 
+  rename(Task1_Business = data.Task1_Business_Page_Submit, Task1_Descriptive = data.Task1_Descriptive_Page_Submit, Task2_Business = data.Task2_Business_Page_Submit, Task2_Descriptive = data.Task2_Descriptive_Page_Submit)
+
+time_data <- time_data %>%
+  gather(key = "Task", value = "Time")
+
+# Calculate quartiles for each task type
+quartiles <- time_data %>%
+  group_by(Task) %>%
+  summarise(Q1 = quantile(Time, probs = 0.25, na.rm = TRUE),
+            Q2 = quantile(Time, probs = 0.5, na.rm = TRUE),
+            Q3 = quantile(Time, probs = 0.75, na.rm = TRUE))
+
+# Plotting with ggplot
+ggplot(time_data, aes(x = Task, y = Time/60)) +
+  geom_boxplot() +
+  geom_text(data = quartiles, aes(y = Q1/60, label = paste0("Q1: ", round(Q1/60, 2))), vjust = -0.5, color = "black", size = 3) +
+  geom_text(data = quartiles, aes(y = Q2/60, label = paste0("Q2: ", round(Q2/60, 2))), vjust = -0.5, color = "black", size = 3) +
+  geom_text(data = quartiles, aes(y = Q3/60, label = paste0("Q3: ", round(Q3/60, 2))), vjust = -0.5, color = "black", size = 3) +
+  labs(title = "Boxplot of Time Spent on Each Task with Quartiles",
+       x = "Task",
+       y = "Time Spent (Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeExperiment.png")
+dev.off()
+
+```
+
+Let us also check if there are correlations between the time needed to do the different tasks.
+
+```{r}
+ggplot(data, aes(x=Task1_Business_Page_Submit/60, y=Task2_Business_Page_Submit/60)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Correlation Between Time Needed for Task 1 Business and Task 2 Business",
+       x = "Time Needed for Task 1 Business (Minutes)",
+       y = "Time Needed for Task 2 Business(Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeBusiness.png")
+dev.off()
+```
+Doing the same for descriptive.
+
+```{r}
+ggplot(data, aes(x=Task1_Descriptive_Page_Submit/60, y=Task2_Descriptive_Page_Submit/60)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Correlation Between Time Needed for Task 1 Descriptive and Task 2 Descriptive",
+       x = "Time Needed for Task 1 Descriptive (Minutes)",
+       y = "Time Needed for Task 2 Descriptive (Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeDescriptive.png")
+dev.off()
+
+
+```
+
+### Time and GAI Help
+
+Furthermore, it would be interesting to see how participant's view of the amount that GPT4 helped them coincides with how fast they did the task through a bar chart, with counts for how many observations are there per category.
+
+
+```{r}
+library(dplyr)
+
+# Calculate count of observations for each category
+counts <- data %>%
+  group_by(Task2_GAI_Help) %>%
+  summarise(count = n())
+
+# Plot
+data %>%
+  ggplot(aes(x = Task2_GAI_Help, y = Task2_Business_Page_Submit/60)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", aes(label = round(..y.., 2)), vjust = -0.5, size =3) +
+  scale_y_continuous(breaks = seq(0,20,5)) +
+  labs(title = "Average Time Needed for Task 2 Business by GPT4 Help",
+       x = "GPT4 Help",
+       y = "Average Time Needed (Minutes)") +
+  theme_solarized() +
+  expand_limits(y = c(0, 20))
+
+
+
+
+  
+dev.copy(png, "TimeGPT4Business.png")
+dev.off()
+```
+Doing the same with descriptive tasks.
+
+```{r}
+data %>% 
+  ggplot(aes(x = Task2_GAI_Help, y = Task2_Descriptive_Page_Submit/60)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", aes(label = round(..y.., 2)), vjust = -0.5, size =3) +
+  labs(title = "Average Time Needed for Task 2 Descriptive by GPT4 Help",
+       x = "GPT4 Help",
+       y = "Average Time Needed (Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeGPT4Descriptive.png")
+dev.off()
+
+```
+
+
+```{r}
+xtable(counts)
+```
+### Time & GAI Experience
+
+Checking the same but with participants experience with generative AI. 
+
+```{r}
+data %>% 
+  ggplot(aes(x=GAI_Experience, y=Task2_Business_Page_Submit/60)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", aes(label = round(..y.., 2)), vjust = -0.5, size =3) +
+  labs(title = "Average Time Needed for Task 2 Business by Experience with GAI",
+       x = "Experience with GAI",
+       y = "Average Time Needed (Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeGAIExperienceBusiness.png")
+dev.off()
+
+```
+
+Doing the same for descriptive tasks.
+
+```{r}
+data %>% 
+  ggplot(aes(x=GAI_Experience, y=Task2_Descriptive_Page_Submit/60)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", aes(label = round(..y.., 2)), vjust = -0.5, size =3) +
+  labs(title = "Average Time Needed for Task 2 Descriptive by Experience with GAI",
+       x = "Experience with GAI",
+       y = "Average Time Needed (Minutes)") +
+  theme_solarized()
+
+dev.copy(png, "TimeGAIExperienceDescriptive.png")
+dev.off()
+```
+
+Seeing the number of people per category.
+
+```{r}
+xtable(data %>% 
+  group_by(GAI_Experience) %>% 
+  summarise(count = n()))
+```
+
+# Data Adjustments and Feature Engineering 
+
+## Releveling Variables
+
+First, I would like to level age. 
+
+```{r}
+copyage <- data$Age
+
+copyage <- copyage %>% 
+  replace(copyage == "12-27 years old", 1) %>%
+  replace(copyage == "28-43 years old", 2) %>%
+  replace(copyage == "44-59 years old", 3) %>%
+  replace(copyage == "60-78 years old", 4) %>%
+  replace(copyage == "79-95 years old", 5) %>%
+  replace(copyage == "Prefer not to say", 0)
+
+data$Age <- copyage
+
+data$Age <- as.factor(data$Age)
+```
+
+
+Will also relevel Gender. 
+
+```{r}
+data$Gender <- replace(data$Gender, data$Gender == "Male", 2)
+data$Gender <- replace(data$Gender, data$Gender == "Female", 1)
+data$Gender <- replace(data$Gender, data$Gender == "Prefer not to say", 0)
+data$Gender <- as.factor(data$Gender)
+
+```
+
+
+Next, I will relevel the English level.
+
+```{r}
+data$English_First_Language <- replace(data$English_First_Language, data$English_First_Language == "No", 0)
+data$English_First_Language <- replace(data$English_First_Language, data$English_First_Language == "Yes", 1)
+data$English_First_Language <- as.factor(data$English_First_Language)
+```
+
+I will also make Ethnicity as a factor, and remove the "Other" column. 
+
+```{r}
+data$Ethnicity <- as.factor(data$Ethnicity)
+data <- data %>% 
+  select(-Ethnicity_Other)
+```
+
+I will also make Occupation as a factor, and any occupation in Other, I will just replace the "other" entry with the same occupation. Lastly, if the occupation is "Student" or "Intern", I will make that into "Part time" and otherwise "Full time" and then make 1 = Full time and 2 = Part time. 
+
+```{r}
+data <- data %>%
+  mutate(Occupation = case_when(
+    grepl("Other", Occupation) ~ Occupation_Other,
+    TRUE ~ Occupation
+))
+
+data <- data %>% 
+  select(-Occupation_Other)
+
+data$Occupation <- replace(data$Occupation, data$Occupation == "Student", "Part time")
+data$Occupation <- replace(data$Occupation, data$Occupation == "Intern", "Part time")
+data$Occupation <- replace(data$Occupation, data$Occupation != "Part time", "Full time")
+
+data$Occupation <- replace(data$Occupation, data$Occupation == "Full time", 1)
+data$Occupation <- replace(data$Occupation, data$Occupation == "Part time", 2)
+
+data$Occupation <- as.factor(data$Occupation)
+```
+
+I will make all textual entries for the number of years of experience blank, and turn it into numeric.
+
+```{r}
+data$Years.of.Experience <- as.numeric(data$Years.of.Experience)
+```
+
+There are some people who have not added their years of experience. For them, I will replace the NA with the median. 
+
+```{r}
+data$Years.of.Experience <- ifelse(is.na(data$Years.of.Experience), median(data$Years.of.Experience, na.rm = TRUE), data$Years.of.Experience)
+```
+
+I will also make education a factor.
+
+```{r}
+copyeducation <- data$Education
+
+copyeducation <- copyeducation %>% 
+  replace(copyeducation == "Secondary Education (VMBO) (4 Years Secondary School)", 1) %>%
+  replace(copyeducation == "Secondary Education (HAVO) (5 Years Secondary School)", 2) %>%
+  replace(copyeducation == "Secondary Education (VWO) (6 Years Secondary School)", 3) %>%
+  replace(copyeducation == "Vocational Education (Bachelors): Practical/Profession (MBO)", 4) %>%
+  replace(copyeducation == "Higher Education (Bachelors): University of Applied Sciences (HBO/Hogeschool)", 5) %>%
+  replace(copyeducation == "Higher Education (Bachelors): Academic/Research Universities (WO/Universiteit)", 6) %>%
+  replace(copyeducation == "Graduate Degree (Masters): Academic/Research Masters (WO/Universiteit)", 7) %>%
+  replace(copyeducation == "Postgraduate Degree: PhD/Doctorate", 8) %>%
+  replace(copyeducation == "Prefer not to say", 0)
+
+data$Education <- copyeducation
+data$Education <- as.factor(data$Education)
+```
+
+
+Now, for Cloze tests, I want to only make the right answer a 1, and everything else a 0.
+
+```{r}
+data$Cloze1_1 <- ifelse(data$Cloze1_1 == "sun", 1, 0)
+data$Cloze1_2 <- ifelse(data$Cloze1_2 == "apple" | data$Cloze1_2 == "orange", 1, 0)
+data$Cloze1_3 <- ifelse(data$Cloze1_3 == "inclement", 1, 0)
+
+data$Cloze2_1 <- ifelse(data$Cloze2_1 == "grass" | data$Cloze2_1 == "tree", 1, 0)
+data$Cloze2_2 <- ifelse(data$Cloze2_2 == "market", 1, 0)
+data$Cloze2_3 <- ifelse(data$Cloze2_3 == "abolish", 1, 0)
+
+data$Cloze3_1 <- ifelse(data$Cloze3_1 == "dog", 1, 0)
+data$Cloze3_2 <- ifelse(data$Cloze3_2 == "pensive", 1, 0)
+data$Cloze3_3 <- ifelse(data$Cloze3_3 == "profound", 1, 0)
+
+data$Cloze1_1 <- as.factor(data$Cloze1_1)
+data$Cloze1_2 <- as.factor(data$Cloze1_2)
+data$Cloze1_3 <- as.factor(data$Cloze1_3)
+data$Cloze2_1 <- as.factor(data$Cloze2_1)
+data$Cloze2_2 <- as.factor(data$Cloze2_2)
+data$Cloze2_3 <- as.factor(data$Cloze2_3)
+data$Cloze3_1 <- as.factor(data$Cloze3_1)
+data$Cloze3_2 <- as.factor(data$Cloze3_2)
+data$Cloze3_3 <- as.factor(data$Cloze3_3)
+```
+
+## Data Type Conversions
+
+Lastly, some conversions need to be made in terms of data type for the regressions to work. 
+
+```{r}
+cols_to_convert <- c("GAI_Experience", "Tech_Skills", 
+                     "Business_Task_Experience", "Descriptive_Task_Experience", 
+                     "Task1_Doable", "Task1_Similar", "Task1_Confidence", 
+                     "Task1_Easy", "Task2_Doable", "Task2_Similar", 
+                     "Task2_Confidence", "Task2_Easy", "Task2_GAI_Help")
+
+data <- data %>%
+  mutate_at(.vars = cols_to_convert, .funs = as.factor)
+
+str(data)
+```
+
+## Outlier Removal & Converting Wide to Long
+
+I want to remnove any entries that go below or above 1.5IQR range of the time taken for the task. Removing NAs when necessary.
+
+```{r}
+copydata <- data %>%
+  filter(
+    is.na(Task1_Business_Page_Submit) | 
+    (Task1_Business_Page_Submit > quantile(Task1_Business_Page_Submit, 0.25, na.rm = TRUE) - 1.5 * IQR(Task1_Business_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task1_Business_Page_Submit) | 
+    (Task1_Business_Page_Submit < quantile(Task1_Business_Page_Submit, 0.75, na.rm = TRUE) + 1.5 * IQR(Task1_Business_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task1_Descriptive_Page_Submit) | 
+    (Task1_Descriptive_Page_Submit > quantile(Task1_Descriptive_Page_Submit, 0.25, na.rm = TRUE) - 1.5 * IQR(Task1_Descriptive_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task1_Descriptive_Page_Submit) | 
+    (Task1_Descriptive_Page_Submit < quantile(Task1_Descriptive_Page_Submit, 0.75, na.rm = TRUE) + 1.5 * IQR(Task1_Descriptive_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task2_Business_Page_Submit) | 
+    (Task2_Business_Page_Submit > quantile(Task2_Business_Page_Submit, 0.25, na.rm = TRUE) - 1.5 * IQR(Task2_Business_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task2_Business_Page_Submit) | 
+    (Task2_Business_Page_Submit < quantile(Task2_Business_Page_Submit, 0.75, na.rm = TRUE) + 1.5 * IQR(Task2_Business_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task2_Descriptive_Page_Submit) | 
+    (Task2_Descriptive_Page_Submit > quantile(Task2_Descriptive_Page_Submit, 0.25, na.rm = TRUE) - 1.5 * IQR(Task2_Descriptive_Page_Submit, na.rm = TRUE))
+  )
+
+copydata <- copydata %>%
+  filter(
+    is.na(Task2_Descriptive_Page_Submit) | 
+    (Task2_Descriptive_Page_Submit < quantile(Task2_Descriptive_Page_Submit, 0.75, na.rm = TRUE) + 1.5 * IQR(Task2_Descriptive_Page_Submit, na.rm = TRUE))
+  )
+
+data <- copydata
+```
+
+This resulted in the removal of 6 observations. 
+
+
+Now, because our texts are split, and so are the times to complete them, it is time to combine them into one column, as follows. 
+
+```{r}
+data$Task1 <- paste(data$Task1_Business, data$Task1_Descriptive)
+data$Task2 <- paste(data$Task2_Business, data$Task2_Descriptive)
+data$TimeTask1 <- ifelse(is.na(data$Task1_Business_Page_Submit), data$Task1_Descriptive_Page_Submit, data$Task1_Business_Page_Submit)
+data$TimeTask2 <- ifelse(is.na(data$Task2_Business_Page_Submit), data$Task2_Descriptive_Page_Submit, data$Task2_Business_Page_Submit)
+
+data <- data %>% 
+  select(-c(16:19), -c(27:30))
+```
+
+
+Because of the way that the data is structured, doing regressions will not work. Therefore, it is time to make the data such that all the text entries land in 1 column, and are separated by another column which mentions if the task was done using GAI or not. This will require some data processing. 
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Assuming your dataset is named 'data' and the text columns are 'Task1' and 'Task2'
+
+# Stack the text columns into a single column
+data <- data %>%
+  pivot_longer(cols = c(Task1, Task2), names_to = "Task", values_to = "Text")
+
+# Remove NA values
+data <- na.omit(data)
+
+# Reset row names if needed
+rownames(data) <- NULL
+
+# Creating a column to indicate usage of genAI
+
+data$GAIUsage <- ifelse(data$Task == "Task1", 0 , 1)
+
+data$Task <- NULL
+data$GAIUsage <- as.factor(data$GAIUsage)
+
+```
+
+# Creating Textual Characteristics
+
+## Spelling Mistakes
+
+```{r}
+customwords <- c("COVID","covid", "Loek", "Nooteboom","OneMicrosoft", "Eindhoven", "ASML","NXP", "Wessel","Vorden","AskHR","Johan", "Ijsselstein","Borgerhout","Hoorn","Friesland","De","Roode","Steen","Hema","Etos","zingt","Hoorn's","Julianapark","Covid","Nico","Contoso","Kleinmarkthalle","Aperol", "Grüne",  "Soße", "Städel","Herni", "Neuwied","Nicolaus","Costa","Rica", "WFH", "Falafel","Abu","Kaak","tahini", "Rodyna","Zidan","Heerlen","Coriovallum","Limburgse","Vlaai","Voncken", "Wereme","Sjenk","Bufkes","Peutz","Glaspaleis","Adië", "Breukelen","Vecht","Voorburg", "Zuid","Leidschendam","Randstad","Het","Haagse","Bos", "Karayazi", "Baarn", "Scheveningen", "Westbroekpark", "mais", "Zwolle", "Mustermann","Joana","Matias", "Ligurian","Focaccia","al","Formaggio", "Soest", "Spakenburg", "Soest's", "Coburn", "Bachstein", "Horten", "Rabiah","Zarqa", "Assir", "shawarma","mansaf","Shawerma", "Shawarma", "sujuc","falafel","Kirchsee", "Betow","Schusterfest", "Preetz", "Heële", "neighbourhood","neighbour", "XYZ","Panetteria","Luca","dell'Amore","Satya","sautéed", "kids'", "artisanal", "tanginess", "herbed","BlueWave","Onno","der","Horst","Cybersecurity","ingredients", "Ingeborg","Dalila","Reb", "impactful", "Dolce", "KPIs","Jurrit","Reby's","TechCorp","BV","Pinterest", "shakshuka","tosti", "centricity", "Manzieco", "mentorship", "clients'","Trois","Vallées", "Savoie","deliverables", "boys","InnovateTech","InnovateTech's","EuroTrade","ABN","Amro","Bizz","Jardin","Rula","amidst", "Rubba","Reb")
+
+count_words <- function(row) {
+  sum(lengths(strsplit(row, " ")))
+}
+
+data$Spelling <- hunspell(data$Text, dict = "en_US", ignore = customwords)
+data$Spelling <- sapply(data$Spelling, count_words)
+```
+
+
+## Readability
+
+```{r}
+data$ReadabilityFlesch <- textstat_readability(data$Text, measure = "Flesch")
+data$ReadabilityFleschKincaid <- textstat_readability(data$Text, measure = "Flesch.Kincaid")
+
+data$ReadabilityFleschKincaid$document <- NULL
+data$ReadabilityFlesch$document <- NULL
+
+data$ReadabilityFlesch <- data$ReadabilityFlesch$Flesch
+data$ReadabilityFleschKincaid <- data$ReadabilityFleschKincaid$Flesch.Kincaid
+```
+
+Now, I am going to export the data, since I am going to do Grammar and Setiment in Python. 
+
+```{r}
+write.csv(data, "experiment_grammar.csv")
+```
+
+## Re-Exporting the Data
+
+We are now going to re-import the data, since we have done some processing in Python. 
+
+```{r}
+setwd("C:/Users/omara/OneDrive/Desktop/Erasmus University Rotterdam/MScBA Business Analytics Management/BMMTIBAM - Thesis & Internship/Data/")
+data <- read.csv("experiment_grammar_sentiment.csv")
+```
+
+# Data Analysis 
+
+Need to re-convert data types...
+
+```{r}
+cols_to_convert <- c("GAI_Experience", "Tech_Skills", 
+                     "Business_Task_Experience", "Descriptive_Task_Experience", 
+                     "Task1_Doable", "Task1_Similar", "Task1_Confidence", 
+                     "Task1_Easy", "Task2_Doable", "Task2_Similar", 
+                     "Task2_Confidence", "Task2_Easy", "Task2_GAI_Help", "Cloze1_1", "Cloze1_2", "Cloze1_3", "Cloze2_1", "Cloze2_2", "Cloze2_3", "Cloze3_1", "Cloze3_2", "Cloze3_3", "GAIUsage", "Occupation","Education","English_First_Language", "Gender","Age", "Ethnicity")
+
+data <- data %>%
+  mutate_at(.vars = cols_to_convert, .funs = as.factor)
+
+str(data)
+```
+
+# Statistical Significance Test for Time Taken vs. GAI Usage
+
+```{r}
+#Combining the two time columns 
+
+data$TimeTask <- ifelse(data$GAIUsage == 0, data$TimeTask1, data$TimeTask2)
+
+TimeReg <- lm(TimeTask ~ GAIUsage, data = data)
+
+stargazer(TimeReg)
+```
+
+# Exporting Data
+
+Exporting data beyond this point for the new document. 
+
+```{r}
+write.csv(data, "experiment_analysis.csv")
+```
